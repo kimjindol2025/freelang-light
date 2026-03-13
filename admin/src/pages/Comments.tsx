@@ -1,133 +1,97 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import axios from 'axios'
-import '../styles/Pages.css'
-
-interface Comment {
-  id: number
-  post_id: number
-  author: string
-  content: string
-  approved: boolean
-  created_at: number
-}
 
 export default function Comments() {
-  const [comments, setComments] = useState<Comment[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
+  const [comments, setComments] = useState([])
+  const [filter, setFilter] = useState('pending')
 
   useEffect(() => {
     fetchComments()
-  }, [])
+  }, [filter])
 
   const fetchComments = async () => {
     try {
-      setLoading(true)
-      const response = await axios.get('/api/comments')
+      const response = await axios.get(`/api/comments?status=${filter}`)
       setComments(response.data || [])
     } catch (error) {
-      console.error('Failed to fetch comments:', error)
-    } finally {
-      setLoading(false)
+      console.error('댓글 조회 실패:', error)
     }
   }
 
-  const handleApproveComment = async (id: number) => {
+  const approveComment = async (id) => {
     try {
-      await axios.put(`/api/comments/${id}`, { approved: true })
+      await axios.patch(`/api/comments/${id}`, { status: 'approved' })
       fetchComments()
     } catch (error) {
-      console.error('Failed to approve comment:', error)
+      console.error('승인 실패:', error)
     }
   }
 
-  const handleRejectComment = async (id: number) => {
+  const rejectComment = async (id) => {
     try {
       await axios.delete(`/api/comments/${id}`)
       fetchComments()
     } catch (error) {
-      console.error('Failed to reject comment:', error)
+      console.error('거부 실패:', error)
     }
   }
 
-  const filteredComments = comments.filter(comment => {
-    if (filter === 'pending') return !comment.approved
-    if (filter === 'approved') return comment.approved
-    return true
-  })
-
-  const stats = {
-    total: comments.length,
-    pending: comments.filter(c => !c.approved).length,
-    approved: comments.filter(c => c.approved).length,
-  }
-
   return (
-    <div className="page comments-page">
-      <div className="page-header">
-        <h1>💬 댓글 관리</h1>
+    <div className="space-y-6">
+      {/* 필터 */}
+      <div className="flex gap-2">
+        {['pending', 'approved', 'rejected'].map((status) => (
+          <button
+            key={status}
+            onClick={() => setFilter(status)}
+            className={`px-4 py-2 rounded-lg font-semibold ${
+              filter === status
+                ? 'bg-freelang-500 text-white'
+                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {status === 'pending' && '⏳ 대기중'}
+            {status === 'approved' && '✅ 승인됨'}
+            {status === 'rejected' && '❌ 거부됨'}
+          </button>
+        ))}
       </div>
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-value">{stats.total}</div>
-          <div className="stat-label">전체 댓글</div>
-        </div>
-        <div className="stat-card warning">
-          <div className="stat-value">{stats.pending}</div>
-          <div className="stat-label">승인 대기</div>
-        </div>
-        <div className="stat-card success">
-          <div className="stat-value">{stats.approved}</div>
-          <div className="stat-label">승인됨</div>
-        </div>
-      </div>
-
-      <div className="filters">
-        <select value={filter} onChange={e => setFilter(e.target.value)} className="filter-select">
-          <option value="all">모든 댓글</option>
-          <option value="pending">승인 대기</option>
-          <option value="approved">승인됨</option>
-        </select>
-      </div>
-
-      {loading ? (
-        <div className="loading">로딩 중...</div>
-      ) : (
-        <div className="comments-list">
-          {filteredComments.map(comment => (
-            <div key={comment.id} className={`comment-card ${comment.approved ? 'approved' : 'pending'}`}>
-              <div className="comment-header">
-                <span className="author">{comment.author}</span>
-                <span className="date">{new Date(comment.created_at * 1000).toLocaleDateString('ko-KR')}</span>
-                <span className={`status ${comment.approved ? 'approved' : 'pending'}`}>
-                  {comment.approved ? '✅ 승인됨' : '⏳ 대기 중'}
-                </span>
+      {/* 댓글 목록 */}
+      <div className="space-y-4">
+        {comments.length === 0 ? (
+          <div className="p-8 text-center text-gray-500 bg-white rounded-lg">댓글이 없습니다</div>
+        ) : (
+          comments.map((comment) => (
+            <div key={comment.id} className="bg-white p-4 rounded-lg shadow border-l-4 border-freelang-500">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <p className="font-semibold text-gray-900">{comment.author}</p>
+                  <p className="text-sm text-gray-500">{new Date(comment.created_at).toLocaleString('ko-KR')}</p>
+                </div>
+                <span className="text-sm px-2 py-1 bg-gray-100 rounded">{comment.post_id} 글</span>
               </div>
-              <div className="comment-content">{comment.content}</div>
-              <div className="comment-footer">
-                <span className="post-ref">포스트 #{comment.post_id}</span>
-                {!comment.approved && (
-                  <div className="actions">
-                    <button
-                      className="btn btn-sm btn-success"
-                      onClick={() => handleApproveComment(comment.id)}
-                    >
-                      승인
-                    </button>
-                    <button
-                      className="btn btn-sm btn-delete"
-                      onClick={() => handleRejectComment(comment.id)}
-                    >
-                      거부
-                    </button>
-                  </div>
-                )}
-              </div>
+              <p className="text-gray-700 mb-3">{comment.content}</p>
+              {filter === 'pending' && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => approveComment(comment.id)}
+                    className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                  >
+                    ✅ 승인
+                  </button>
+                  <button
+                    onClick={() => rejectComment(comment.id)}
+                    className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                  >
+                    ❌ 거부
+                  </button>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
     </div>
   )
 }

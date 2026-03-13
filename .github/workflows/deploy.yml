@@ -1,121 +1,56 @@
-name: Deploy to Production (CD)
+name: Deploy to 253 Server
 
 on:
   push:
-    branches: [ master ]
-    paths:
-      - 'examples/src/**'
-      - 'admin/**'
-      - 'docker-compose.yml'
-      - '.github/workflows/deploy.yml'
-  workflow_dispatch:  # 수동 트리거
+    branches: [master, main]
+  workflow_dispatch:
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
 
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: Set Build Info
-        run: |
-          echo "Build Date: $(date)" >> $GITHUB_ENV
-          echo "Git Commit: $(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "Git Branch: $(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_ENV
+      - name: Get version
+        id: version
+        run: echo "VERSION=$(git describe --tags --always)" >> $GITHUB_OUTPUT
 
-      # 1. Docker 이미지 빌드
-      - name: Build Docker Images
-        run: |
-          echo "Building Docker images..."
-          docker-compose build --no-cache
-          echo "✅ Docker images built"
-
-      # 2. 이미지 태그 지정
-      - name: Tag Docker Images
-        run: |
-          docker tag freelang-light-blog:latest kim/freelang-blog:$(date +%Y%m%d-%H%M%S)
-          docker tag freelang-light-nginx:latest kim/freelang-nginx:$(date +%Y%m%d-%H%M%S)
-          echo "✅ Images tagged"
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-
-    steps:
-      - uses: actions/checkout@v3
-
-      # 1. SSH 키 설정
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -p ${{ secrets.DEPLOY_PORT }} ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
-      # 2. 배포 준비 (원격 서버)
-      - name: Prepare Deployment
+      - name: Deploy to server
         run: |
-          ssh -i ~/.ssh/deploy_key -p ${{ secrets.DEPLOY_PORT }} \
-            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            'mkdir -p ~/freelang-light && cd ~/freelang-light && pwd'
+          REMOTE="ssh -p ${{ secrets.DEPLOY_PORT }} ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          
+          # 파일 업로드
+          scp -P ${{ secrets.DEPLOY_PORT }} -r . \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/
+          
+          # 배포 스크립트 실행
+          $REMOTE "cd ${{ secrets.DEPLOY_PATH }} && \
+            docker-compose pull && \
+            docker-compose build --no-cache && \
+            docker-compose down && \
+            docker-compose up -d && \
+            docker-compose ps"
 
-      # 3. 코드 배포 (SCP)
-      - name: Deploy Code
+      - name: Health check
         run: |
-          scp -i ~/.ssh/deploy_key -P ${{ secrets.DEPLOY_PORT }} -r \
-            . ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/freelang-light/
-          echo "✅ Code deployed"
+          REMOTE="ssh -p ${{ secrets.DEPLOY_PORT }} ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          $REMOTE "sleep 5 && curl -f https://253.dclub.kr/api/health || exit 1"
 
-      # 4. Docker Compose 실행 (SSH)
-      - name: Start Services
-        run: |
-          ssh -i ~/.ssh/deploy_key -p ${{ secrets.DEPLOY_PORT }} \
-            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            'cd ~/freelang-light && docker-compose pull && docker-compose up -d'
-          echo "✅ Services started"
-
-      # 5. 헬스 체크
-      - name: Health Check
-        run: |
-          sleep 10
-          ssh -i ~/.ssh/deploy_key -p ${{ secrets.DEPLOY_PORT }} \
-            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            'curl -s http://localhost:5021/api/blogs | head -20'
-          echo "✅ Health check passed"
-
-      # 6. 배포 성공 알림
-      - name: Deployment Success
-        if: success()
-        run: |
-          echo "✅ Deployment to 253 server successful!"
-          echo "Server: ${{ secrets.DEPLOY_HOST }}"
-          echo "Branch: master"
-          echo "Commit: $(git rev-parse --short HEAD)"
-
-      # 7. 배포 실패 알림
-      - name: Deployment Failure
-        if: failure()
-        run: |
-          echo "❌ Deployment failed!"
-          exit 1
-
-  # 스모크 테스트 (배포 후)
-  smoke-test:
-    needs: deploy
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Smoke Test - API
-        run: |
-          echo "Running smoke tests..."
-          # 실제 서버에 테스트 요청
-          # curl -X GET http://${{ secrets.DEPLOY_HOST }}:80/api/blogs
-          echo "✅ Smoke tests passed"
-
-      - name: Notify Success
-        run: |
-          echo "✅ All deployment tests passed!"
-          echo "Service is live at: https://253.dclub.kr"
+      - name: Notify Slack
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Deployment to 253 server: ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}

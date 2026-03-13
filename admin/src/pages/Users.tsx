@@ -1,21 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import axios from 'axios'
-import '../styles/Pages.css'
-
-interface User {
-  id: number
-  username: string
-  email: string
-  role: string
-  is_active: boolean
-  created_at: number
-}
 
 export default function Users() {
-  const [users, setUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(true)
+  const [users, setUsers] = useState([])
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('all')
 
   useEffect(() => {
     fetchUsers()
@@ -23,140 +11,94 @@ export default function Users() {
 
   const fetchUsers = async () => {
     try {
-      setLoading(true)
       const response = await axios.get('/api/users')
       setUsers(response.data || [])
     } catch (error) {
-      console.error('Failed to fetch users:', error)
-    } finally {
-      setLoading(false)
+      console.error('사용자 조회 실패:', error)
     }
   }
 
-  const handleToggleActive = async (id: number, isActive: boolean) => {
+  const toggleUserStatus = async (id, isActive) => {
     try {
-      await axios.put(`/api/users/${id}`, { is_active: !isActive })
+      await axios.patch(`/api/users/${id}`, { is_active: !isActive })
       fetchUsers()
     } catch (error) {
-      console.error('Failed to update user:', error)
+      console.error('상태 변경 실패:', error)
     }
   }
 
-  const handleChangeRole = async (id: number, newRole: string) => {
-    try {
-      await axios.put(`/api/users/${id}`, { role: newRole })
-      fetchUsers()
-    } catch (error) {
-      console.error('Failed to update user role:', error)
-    }
-  }
-
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.username.includes(search) || user.email.includes(search)
-    const matchesFilter = filter === 'all' ||
-                         (filter === 'admin' && user.role === 'admin') ||
-                         (filter === 'active' && user.is_active) ||
-                         (filter === 'inactive' && !user.is_active)
-    return matchesSearch && matchesFilter
-  })
-
-  const stats = {
-    total: users.length,
-    admin: users.filter(u => u.role === 'admin').length,
-    active: users.filter(u => u.is_active).length,
-  }
+  const filteredUsers = users.filter(u =>
+    u.username?.toLowerCase().includes(search.toLowerCase()) ||
+    u.email?.toLowerCase().includes(search.toLowerCase())
+  )
 
   return (
-    <div className="page users-page">
-      <div className="page-header">
-        <h1>👥 사용자 관리</h1>
-      </div>
+    <div className="space-y-6">
+      {/* 검색 */}
+      <input
+        type="text"
+        placeholder="사용자명 또는 이메일로 검색..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-freelang-500"
+      />
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-value">{stats.total}</div>
-          <div className="stat-label">전체 사용자</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{stats.admin}</div>
-          <div className="stat-label">관리자</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{stats.active}</div>
-          <div className="stat-label">활성</div>
-        </div>
-      </div>
-
-      <div className="filters">
-        <input
-          type="text"
-          placeholder="사용자명 또는 이메일 검색..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="search-input"
-        />
-        <select value={filter} onChange={e => setFilter(e.target.value)} className="filter-select">
-          <option value="all">모든 사용자</option>
-          <option value="admin">관리자</option>
-          <option value="active">활성</option>
-          <option value="inactive">비활성</option>
-        </select>
-      </div>
-
-      {loading ? (
-        <div className="loading">로딩 중...</div>
-      ) : (
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>사용자명</th>
-                <th>이메일</th>
-                <th>역할</th>
-                <th>상태</th>
-                <th>가입일</th>
-                <th>작업</th>
+      {/* 사용자 테이블 */}
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
+        <table className="w-full">
+          <thead className="border-b bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left font-semibold text-gray-700">사용자명</th>
+              <th className="px-6 py-3 text-left font-semibold text-gray-700">이메일</th>
+              <th className="px-6 py-3 text-left font-semibold text-gray-700">역할</th>
+              <th className="px-6 py-3 text-left font-semibold text-gray-700">상태</th>
+              <th className="px-6 py-3 text-left font-semibold text-gray-700">마지막 접속</th>
+              <th className="px-6 py-3 text-center font-semibold text-gray-700">작업</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUsers.map((user) => (
+              <tr key={user.id} className="border-b hover:bg-gray-50">
+                <td className="px-6 py-4 font-medium text-gray-900">{user.username}</td>
+                <td className="px-6 py-4 text-gray-600">{user.email}</td>
+                <td className="px-6 py-4">
+                  <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                    user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {user.role === 'admin' ? '👑 관리자' : '👤 사용자'}
+                  </span>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                    user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {user.is_active ? '🟢 활성' : '🔴 비활성'}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-gray-600 text-sm">
+                  {user.last_login ? new Date(user.last_login).toLocaleDateString('ko-KR') : '접속 기록 없음'}
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <button
+                    onClick={() => toggleUserStatus(user.id, user.is_active)}
+                    className={`px-3 py-1 text-sm rounded ${
+                      user.is_active
+                        ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                        : 'bg-green-100 text-green-600 hover:bg-green-200'
+                    }`}
+                  >
+                    {user.is_active ? '🔒 비활성화' : '🔓 활성화'}
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map(user => (
-                <tr key={user.id}>
-                  <td>{user.id}</td>
-                  <td>{user.username}</td>
-                  <td>{user.email}</td>
-                  <td>
-                    <select
-                      value={user.role}
-                      onChange={e => handleChangeRole(user.id, e.target.value)}
-                      className="role-select"
-                    >
-                      <option value="user">사용자</option>
-                      <option value="author">작성자</option>
-                      <option value="editor">편집자</option>
-                      <option value="admin">관리자</option>
-                    </select>
-                  </td>
-                  <td>
-                    <span className={`badge ${user.is_active ? 'badge-success' : 'badge-danger'}`}>
-                      {user.is_active ? '✅ 활성' : '❌ 비활성'}
-                    </span>
-                  </td>
-                  <td>{new Date(user.created_at * 1000).toLocaleDateString('ko-KR')}</td>
-                  <td>
-                    <button
-                      className={`btn btn-sm ${user.is_active ? 'btn-disable' : 'btn-enable'}`}
-                      onClick={() => handleToggleActive(user.id, user.is_active)}
-                    >
-                      {user.is_active ? '비활성화' : '활성화'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="text-sm text-gray-600">
+        총 {users.length}명 (활성: {users.filter(u => u.is_active).length}명)
+      </div>
     </div>
   )
 }
