@@ -1,0 +1,724 @@
+openapi: 3.0.0
+info:
+  title: FreeLang Blog API
+  description: 블로그 시스템을 위한 프로덕션급 REST API
+  version: 1.0.0
+  contact:
+    name: FreeLang Support
+    url: https://freelang-light.com
+    email: support@freelang-light.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:5021/api
+    description: 로컬 개발 서버
+  - url: https://253.dclub.kr/api
+    description: 프로덕션 서버
+
+tags:
+  - name: Posts
+    description: 블로그 포스트 관리
+  - name: Comments
+    description: 댓글 관리
+  - name: Users
+    description: 사용자 관리
+  - name: Analytics
+    description: 분석 및 통계
+  - name: Auth
+    description: 인증 (OAuth 2.0)
+  - name: Admin
+    description: 관리자 기능
+
+paths:
+  /blogs:
+    get:
+      tags:
+        - Posts
+      summary: 모든 포스트 조회
+      description: 페이지네이션이 지원되는 포스트 목록 조회
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: 페이지 번호
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: 페이지당 항목 수
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [published, draft, archived]
+          description: 포스트 상태 필터
+      responses:
+        '200':
+          description: 포스트 목록 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  posts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Post'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pages:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Posts
+      summary: 새 포스트 생성
+      description: 인증된 사용자가 새 포스트를 생성합니다
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostRequest'
+      responses:
+        '201':
+          description: 포스트 생성 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /blogs/{id}:
+    get:
+      tags:
+        - Posts
+      summary: 특정 포스트 조회
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: 포스트 ID
+      responses:
+        '200':
+          description: 포스트 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Posts
+      summary: 포스트 수정
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePostRequest'
+      responses:
+        '200':
+          description: 포스트 수정 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Posts
+      summary: 포스트 삭제
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: 포스트 삭제 성공
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /blogs/{id}/view:
+    post:
+      tags:
+        - Posts
+      summary: 포스트 조회수 증가
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 조회수 증가 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  views:
+                    type: integer
+
+  /comments:
+    get:
+      tags:
+        - Comments
+      summary: 댓글 목록 조회
+      parameters:
+        - name: post_id
+          in: query
+          schema:
+            type: integer
+          description: 포스트 ID (선택사항)
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected]
+          description: 댓글 상태 필터
+      responses:
+        '200':
+          description: 댓글 목록 조회 성공
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Comment'
+
+    post:
+      tags:
+        - Comments
+      summary: 새 댓글 생성
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: 댓글 생성 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+
+  /comments/{id}:
+    put:
+      tags:
+        - Comments
+      summary: 댓글 승인/거부
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [approved, rejected]
+      responses:
+        '200':
+          description: 댓글 상태 업데이트 성공
+
+    delete:
+      tags:
+        - Comments
+      summary: 댓글 삭제
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: 댓글 삭제 성공
+
+  /users:
+    get:
+      tags:
+        - Users
+      summary: 사용자 목록 조회
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 사용자 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+
+  /users/{id}:
+    get:
+      tags:
+        - Users
+      summary: 사용자 상세 조회
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 사용자 정보
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+    put:
+      tags:
+        - Users
+      summary: 사용자 정보 수정
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: 사용자 정보 업데이트 성공
+
+  /auth/google/login:
+    get:
+      tags:
+        - Auth
+      summary: Google OAuth 로그인 URL 생성
+      responses:
+        '200':
+          description: 로그인 URL 반환
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  auth_url:
+                    type: string
+                    description: Google OAuth 인증 URL
+
+  /auth/google/callback:
+    get:
+      tags:
+        - Auth
+      summary: Google OAuth 콜백
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 로그인 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthToken'
+
+  /auth/github/login:
+    get:
+      tags:
+        - Auth
+      summary: GitHub OAuth 로그인 URL 생성
+      responses:
+        '200':
+          description: 로그인 URL 반환
+
+  /auth/naver/login:
+    get:
+      tags:
+        - Auth
+      summary: Naver OAuth 로그인 URL 생성
+      responses:
+        '200':
+          description: 로그인 URL 반환
+
+  /admin/stats:
+    get:
+      tags:
+        - Admin
+      summary: 통계 데이터 조회
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 통계 데이터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stats'
+
+  /admin/health:
+    get:
+      tags:
+        - Admin
+      summary: 시스템 상태 확인
+      responses:
+        '200':
+          description: 시스템 상태
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /admin/backup:
+    post:
+      tags:
+        - Admin
+      summary: 백업 트리거
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 백업 시작됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backup_id:
+                    type: string
+                  status:
+                    type: string
+
+  /admin/logs:
+    get:
+      tags:
+        - Admin
+      summary: 에러 로그 조회
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [ERROR, WARN, INFO, DEBUG]
+          description: 로그 레벨
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: 로그 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogEntry'
+
+components:
+  schemas:
+    Post:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        content:
+          type: string
+        author:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        views:
+          type: integer
+        likes:
+          type: integer
+        status:
+          type: string
+          enum: [published, draft, archived]
+        tags:
+          type: array
+          items:
+            type: string
+
+    CreatePostRequest:
+      type: object
+      required:
+        - title
+        - content
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        content:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [published, draft]
+
+    UpdatePostRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+          enum: [published, draft, archived]
+        tags:
+          type: array
+          items:
+            type: string
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: integer
+        post_id:
+          type: integer
+        author:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        created_at:
+          type: string
+          format: date-time
+
+    CreateCommentRequest:
+      type: object
+      required:
+        - post_id
+        - author
+        - content
+      properties:
+        post_id:
+          type: integer
+        author:
+          type: string
+        content:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [user, author, editor, admin]
+        created_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, author, editor, admin]
+        is_active:
+          type: boolean
+
+    AuthToken:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT 토큰
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+            email:
+              type: string
+            name:
+              type: string
+
+    Stats:
+      type: object
+      properties:
+        total_posts:
+          type: integer
+        total_comments:
+          type: integer
+        total_users:
+          type: integer
+        total_views:
+          type: integer
+        recent_posts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Post'
+
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, warning, critical]
+        memory_usage:
+          type: number
+        disk_usage:
+          type: number
+        database_connections:
+          type: integer
+        uptime_seconds:
+          type: integer
+
+    LogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        level:
+          type: string
+          enum: [ERROR, WARN, INFO, DEBUG]
+        message:
+          type: string
+        context:
+          type: object
+
+  responses:
+    BadRequest:
+      description: 요청 형식 오류
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    Unauthorized:
+      description: 인증 실패
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    NotFound:
+      description: 리소스를 찾을 수 없음
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    InternalServerError:
+      description: 서버 오류
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT 토큰을 사용한 인증

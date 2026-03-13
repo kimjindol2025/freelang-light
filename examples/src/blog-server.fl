@@ -245,6 +245,15 @@ fn route_request(req: HttpRequest, db: &mut BlogDb) -> HttpResponse {
       return serve_index_html()
     end
 
+    // API 문서 (Swagger UI)
+    if req.method == "GET" && req.path == "/api/docs"
+      return serve_swagger_ui()
+    end
+
+    if req.method == "GET" && req.path == "/api/docs/spec"
+      return serve_api_spec()
+    end
+
     // OAuth 라우팅
     if starts_with(req.path, "/auth/")
       return route_oauth_api(req)
@@ -653,4 +662,89 @@ fn handle_naver_callback(req: HttpRequest) -> HttpResponse
       body: json,
       bodyBytes: []
     }
+  end
+
+// ============================================================================
+// PART 12: Swagger API 문서
+// ============================================================================
+
+fn serve_swagger_ui() -> HttpResponse
+  intent "Swagger UI HTML 서빙"
+  do
+    let html = "<!DOCTYPE html>
+<html>
+<head>
+  <title>FreeLang Blog API - Swagger UI</title>
+  <meta charset=\"utf-8\"/>
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui.css\">
+  <style>
+    html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
+    *, *:before, *:after { box-sizing: inherit; }
+    body { margin: 0; padding: 0; }
+  </style>
+</head>
+<body>
+  <div id=\"swagger-ui\"></div>
+  <script src=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui-bundle.js\"></script>
+  <script src=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui-standalone-preset.js\"></script>
+  <script>
+    window.onload = function() {
+      SwaggerUIBundle({
+        url: \"/api/docs/spec\",
+        dom_id: '#swagger-ui',
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        layout: \"StandaloneLayout\"
+      })
+    }
+  </script>
+</body>
+</html>"
+
+    let headers = {
+      "Content-Type": "text/html; charset=utf-8",
+      "Connection": "keep-alive",
+      "Cache-Control": "public, max-age=3600"
+    }
+
+    return HttpResponse {
+      status: 200,
+      statusText: "OK",
+      headers: headers,
+      body: html,
+      bodyBytes: []
+    }
+  end
+
+fn serve_api_spec() -> HttpResponse
+  intent "OpenAPI 스펙 (YAML) 서빙"
+  do
+    let spec_path = "/tmp/freelang-light/docs/api.yaml"
+
+    match file_io::read_file(spec_path)
+      Ok(spec_content) => {
+        error_logger::log_info("API 스펙 제공: " + spec_path)
+
+        let headers = {
+          "Content-Type": "application/yaml; charset=utf-8",
+          "Connection": "keep-alive",
+          "Cache-Control": "public, max-age=3600"
+        }
+
+        return HttpResponse {
+          status: 200,
+          statusText: "OK",
+          headers: headers,
+          body: spec_content,
+          bodyBytes: []
+        }
+      }
+      Err(e) => {
+        error_logger::log_error("API 스펙 로드 실패: " + spec_path)
+        return create_error_response(404, "API 스펙을 찾을 수 없습니다")
+      }
+    end
   end
