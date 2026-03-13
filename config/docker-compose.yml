@@ -85,6 +85,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       nginx:
         condition: service_started
       prometheus:
@@ -174,7 +176,7 @@ services:
 
     # 주석: profiles 제거 → PostgreSQL 항상 활성화 (프로덕션 필수)
 
-  # ==================== Redis Cache (선택사항) ====================
+  # ==================== Redis Cache (프로덕션 필수 - Phase 3) ====================
   redis:
     image: redis:7-alpine
     container_name: freelang-hybrid-cache
@@ -183,11 +185,12 @@ services:
     ports:
       - "6379:6379"
 
-    # 명령어 (AOF 활성화)
-    command: redis-server --appendonly yes
+    # 명령어 (AOF 활성화 + 설정 파일)
+    command: redis-server /usr/local/etc/redis/redis.conf --appendonly yes
 
     # 볼륨
     volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
       - redis-data:/data
 
     # 네트워크
@@ -204,9 +207,7 @@ services:
     # 리스타트
     restart: unless-stopped
 
-    # 프로필
-    profiles:
-      - cache
+    # 주석: profiles 제거 → Redis 항상 활성화 (성능 최적화 필수)
 
   # ==================== Monitoring (프로덕션 필수) ====================
   prometheus:

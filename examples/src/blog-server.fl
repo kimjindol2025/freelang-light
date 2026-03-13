@@ -27,6 +27,9 @@ use "./oauth-github"
 use "./oauth-naver"
 use "./auth"
 
+// Phase 3: 캐싱 import ✅
+use "./cache"
+
 // ============================================================================
 // PART 1: HTTP 요청 핸들러 (HTTP Engine과 Blog API 통합)
 // ============================================================================
@@ -137,6 +140,16 @@ fn initialize_plugins(manager: &mut PluginManager) -> void {
 
 let GLOBAL_DB = blog_db_new("/tmp/blog-data.json")
 let GLOBAL_PLUGINS = PluginManager { plugins: {}, hooks: {} }
+
+// Phase 3: Redis 캐시 연결 ✅
+let CACHE_CONFIG = CacheConfig {
+  host: "localhost",
+  port: 6379,
+  db: 0,
+  password: "",
+  max_ttl_seconds: 86400
+}
+let REDIS_CONN = redis_connect(CACHE_CONFIG)  // 시작시 연결
 
 // ============================================================================
 // PART 4: 메인 서버 함수
@@ -746,5 +759,71 @@ fn serve_api_spec() -> HttpResponse
         error_logger::log_error("API 스펙 로드 실패: " + spec_path)
         return create_error_response(404, "API 스펙을 찾을 수 없습니다")
       }
+    end
+  end
+
+// ============================================================================
+// PART 13: 캐싱 통합 헬퍼
+// ============================================================================
+
+fn get_cached_posts(page: i32, limit: i32) -> Result<string, string>
+  intent "포스트 목록을 캐시에서 조회 (Cache-Aside)"
+  do
+    let cache_key = "posts:page:" + string_of_int(page) + ":limit:" + string_of_int(limit)
+
+    // 1단계: 캐시 확인
+    match REDIS_CONN
+      Ok(conn) => {
+        match cache_get(conn, cache_key)
+          Ok(cached_posts) => {
+            error_logger::log_debug("✅ 캐시 히트: " + cache_key)
+            return Ok(cached_posts)
+          }
+          Err(_) => {
+            // 캐시 미스
+            error_logger::log_debug("❌ 캐시 미스: " + cache_key)
+          }
+        end
+      }
+      Err(_) => {}
+    end
+
+    // 2단계: 데이터베이스에서 조회
+    // TODO: 실제 DB 쿼리
+    let posts_json = "{\"posts\":[]}"
+
+    // 3단계: 캐시에 저장 (TTL: 1시간)
+    match REDIS_CONN
+      Ok(conn) => {
+        match cache_set(conn, cache_key, posts_json, 3600)
+          Ok(()) => {
+            error_logger::log_debug("💾 캐시 저장 완료: " + cache_key)
+          }
+          Err(e) => {
+            error_logger::log_warn("⚠️ 캐시 저장 실패: " + e)
+          }
+        end
+      }
+      Err(_) => {}
+    end
+
+    return Ok(posts_json)
+  end
+
+fn invalidate_posts_cache() -> void
+  intent "포스트 캐시 무효화 (생성/수정/삭제 시)"
+  do
+    match REDIS_CONN
+      Ok(conn) => {
+        match cache_delete_pattern(conn, "posts:*")
+          Ok(deleted) => {
+            error_logger::log_info("🗑️ 포스트 캐시 무효화: " + string_of_int(deleted) + "개 삭제")
+          }
+          Err(e) => {
+            error_logger::log_warn("⚠️ 캐시 무효화 실패: " + e)
+          }
+        end
+      }
+      Err(_) => {}
     end
   end
