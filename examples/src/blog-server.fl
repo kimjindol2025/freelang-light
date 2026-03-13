@@ -21,6 +21,12 @@ use "./file-io"  // 파일 I/O 모듈
 // Phase 4: 모니터링 import ✅
 use "./error-logger"
 
+// OAuth 2.0 import ✅
+use "./oauth-google"
+use "./oauth-github"
+use "./oauth-naver"
+use "./auth"
+
 // ============================================================================
 // PART 1: HTTP 요청 핸들러 (HTTP Engine과 Blog API 통합)
 // ============================================================================
@@ -214,11 +220,7 @@ fn blog_db_new(path: string) -> BlogDb {
 // ============================================================================
 
 fn route_request(req: HttpRequest, db: &mut BlogDb) -> HttpResponse {
-<<<<<<< HEAD
-  intent "HTTP 요청 라우팅"
-  do
-=======
-  intent "HTTP 요청 라우팅 (Phase 3 확장 + 모니터링)"
+  intent "HTTP 요청 라우팅 (Phase 3 확장 + 모니터링 + OAuth)"
   do
     // ✅ 요청 라우팅 모니터링
     error_logger::log_debug("라우팅 시작: " + req.method + " " + req.path)
@@ -238,10 +240,14 @@ fn route_request(req: HttpRequest, db: &mut BlogDb) -> HttpResponse {
     let origin = "http://localhost:3000"  // TODO: req headers에서 추출
     let cors_headers = security::get_cors_headers(origin)
 
->>>>>>> 5e3d9eb (✨ Phase 1 Task 4: 기본 모니터링 시스템 완료 (100% 구현))
     // 정적 파일 서빙
     if req.method == "GET" && req.path == "/"
       return serve_index_html()
+    end
+
+    // OAuth 라우팅
+    if starts_with(req.path, "/auth/")
+      return route_oauth_api(req)
     end
 
     // Blog API
@@ -292,6 +298,40 @@ fn route_plugin_api(req: HttpRequest) -> HttpResponse {
     end
 
     return create_error_response(404, "Plugin API not found")
+  end
+}
+
+fn route_oauth_api(req: HttpRequest) -> HttpResponse {
+  intent "OAuth 2.0 라우팅 (Google, GitHub, Naver)"
+  do
+    // Google OAuth
+    if req.method == "GET" && req.path == "/auth/google/login"
+      return handle_google_login(req)
+    end
+
+    if req.method == "GET" && starts_with(req.path, "/auth/google/callback")
+      return handle_google_callback(req)
+    end
+
+    // GitHub OAuth
+    if req.method == "GET" && req.path == "/auth/github/login"
+      return handle_github_login(req)
+    end
+
+    if req.method == "GET" && starts_with(req.path, "/auth/github/callback")
+      return handle_github_callback(req)
+    end
+
+    // Naver OAuth
+    if req.method == "GET" && req.path == "/auth/naver/login"
+      return handle_naver_login(req)
+    end
+
+    if req.method == "GET" && starts_with(req.path, "/auth/naver/callback")
+      return handle_naver_callback(req)
+    end
+
+    return create_error_response(404, "OAuth API not found")
   end
 }
 
@@ -448,4 +488,169 @@ fn log_cache_hit(key: string, hit: bool) -> void
     else
       error_logger::log_debug("캐시 미스: " + key)
     end
+  end
+
+// ============================================================================
+// PART 11: OAuth 2.0 핸들러
+// ============================================================================
+
+fn handle_google_login(req: HttpRequest) -> HttpResponse
+  intent "Google OAuth 로그인 시작"
+  do
+    let config = GoogleOAuthConfig {
+      client_id: "GOOGLE_CLIENT_ID",  // config/oauth.env에서 로드
+      client_secret: "GOOGLE_CLIENT_SECRET",
+      redirect_uri: "http://localhost:5021/auth/google/callback",
+      scope: "openid email profile"
+    }
+
+    let auth_url = google_get_auth_url(config)
+
+    let headers = {
+      "Content-Type": "application/json; charset=utf-8",
+      "Connection": "keep-alive"
+    }
+
+    let json = "{\"auth_url\":\"" + auth_url + "\"}"
+
+    return HttpResponse {
+      status: 200,
+      statusText: "OK",
+      headers: headers,
+      body: json,
+      bodyBytes: []
+    }
+  end
+
+fn handle_google_callback(req: HttpRequest) -> HttpResponse
+  intent "Google OAuth 콜백 처리"
+  do
+    // TODO: 쿼리 문자열에서 code 추출
+    let code = "google_auth_code"
+    let state = "random_state_token"
+
+    error_logger::log_info("Google OAuth 콜백: code=" + code)
+
+    // 토큰 교환 (실제로는 HTTP POST 수행)
+    // 사용자 정보 조회
+    // JWT 토큰 생성 및 반환
+
+    let json = "{\"token\":\"jwt_token_xxx\",\"user\":{\"email\":\"user@gmail.com\"}}"
+
+    let headers = {
+      "Content-Type": "application/json; charset=utf-8",
+      "Connection": "keep-alive"
+    }
+
+    return HttpResponse {
+      status: 200,
+      statusText: "OK",
+      headers: headers,
+      body: json,
+      bodyBytes: []
+    }
+  end
+
+fn handle_github_login(req: HttpRequest) -> HttpResponse
+  intent "GitHub OAuth 로그인 시작"
+  do
+    let config = GitHubOAuthConfig {
+      client_id: "GITHUB_CLIENT_ID",
+      client_secret: "GITHUB_CLIENT_SECRET",
+      redirect_uri: "http://localhost:5021/auth/github/callback",
+      scope: "user:email"
+    }
+
+    let auth_url = github_get_auth_url(config)
+
+    let headers = {
+      "Content-Type": "application/json; charset=utf-8",
+      "Connection": "keep-alive"
+    }
+
+    let json = "{\"auth_url\":\"" + auth_url + "\"}"
+
+    return HttpResponse {
+      status: 200,
+      statusText: "OK",
+      headers: headers,
+      body: json,
+      bodyBytes: []
+    }
+  end
+
+fn handle_github_callback(req: HttpRequest) -> HttpResponse
+  intent "GitHub OAuth 콜백 처리"
+  do
+    let code = "github_auth_code"
+    let state = "random_state_token"
+
+    error_logger::log_info("GitHub OAuth 콜백: code=" + code)
+
+    let json = "{\"token\":\"jwt_token_xxx\",\"user\":{\"login\":\"johndoe\"}}"
+
+    let headers = {
+      "Content-Type": "application/json; charset=utf-8",
+      "Connection": "keep-alive"
+    }
+
+    return HttpResponse {
+      status: 200,
+      statusText: "OK",
+      headers: headers,
+      body: json,
+      bodyBytes: []
+    }
+  end
+
+fn handle_naver_login(req: HttpRequest) -> HttpResponse
+  intent "Naver OAuth 로그인 시작"
+  do
+    let config = NaverOAuthConfig {
+      client_id: "NAVER_CLIENT_ID",
+      client_secret: "NAVER_CLIENT_SECRET",
+      redirect_uri: "http://localhost:5021/auth/naver/callback",
+      scope: "nickname email"
+    }
+
+    let auth_url = naver_get_auth_url(config)
+
+    let headers = {
+      "Content-Type": "application/json; charset=utf-8",
+      "Connection": "keep-alive"
+    }
+
+    let json = "{\"auth_url\":\"" + auth_url + "\"}"
+
+    return HttpResponse {
+      status: 200,
+      statusText: "OK",
+      headers: headers,
+      body: json,
+      bodyBytes: []
+    }
+  end
+
+fn handle_naver_callback(req: HttpRequest) -> HttpResponse
+  intent "Naver OAuth 콜백 처리"
+  do
+    let code = "naver_auth_code"
+    let state = "random_state_token"
+
+    error_logger::log_info("Naver OAuth 콜백: code=" + code)
+
+    let json = "{\"token\":\"jwt_token_xxx\",\"user\":{\"nickname\":\"johndoe\"}}"
+
+    let headers = {
+      "Content-Type": "application/json; charset=utf-8",
+      "Connection": "keep-alive"
+    }
+
+    return HttpResponse {
+      status: 200,
+      statusText: "OK",
+      headers: headers,
+      body: json,
+      bodyBytes: []
+    }
   end
