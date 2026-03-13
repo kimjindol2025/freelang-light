@@ -254,6 +254,47 @@ services:
 
     # 주석: profiles 제거 → Prometheus 항상 활성화 (모니터링 필수)
 
+  # ==================== Grafana Visualization (Phase 3) ====================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: freelang-hybrid-grafana
+
+    # 포트 매핑
+    ports:
+      - "3100:3000"
+
+    # 환경 변수
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=freelang123
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      - GF_SERVER_ROOT_URL=http://localhost:3100
+      - GF_USERS_ALLOW_SIGN_UP=false
+
+    # 설정 파일
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana.ini:/etc/grafana/grafana.ini:ro
+
+    # 네트워크
+    networks:
+      - freelang-network
+
+    # 의존성
+    depends_on:
+      - prometheus
+
+    # 헬스 체크
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    # 리스타트
+    restart: unless-stopped
+
 # ==================== 네트워크 ====================
 networks:
   freelang-network:
@@ -269,4 +310,6 @@ volumes:
   redis-data:
     driver: local
   prometheus-data:
+    driver: local
+  grafana-data:
     driver: local

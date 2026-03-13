@@ -1,0 +1,35 @@
+# Grafana Configuration
+app_mode: production
+
+# Server
+[server]
+http_port = 3000
+root_url = %(protocol)s://%(domain)s:%(http_port)s/
+
+# Database
+[database]
+type = sqlite3
+path = /var/lib/grafana/grafana.db
+
+# Security
+[security]
+admin_user = admin
+admin_password = admin
+
+[users]
+allow_sign_up = false
+
+[auth.anonymous]
+enabled = true
+org_role = Viewer
+
+# Paths
+[paths]
+data = /var/lib/grafana
+logs = /var/log/grafana
+plugins = /var/lib/grafana/plugins
+
+# Logging
+[log]
+mode = console
+level = info
