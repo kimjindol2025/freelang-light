@@ -54,8 +54,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential python3
 
+    - name: 📦 Clear npm cache
+      run: npm cache clean --force
+
     - name: 📦 Install dependencies
-      run: npm ci --verbose
+      run: npm ci --legacy-peer-deps --verbose
 
     - name: 🔍 Run linter
       run: npm run lint --if-present
@@ -101,8 +104,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential python3
 
+    - name: 📦 Clear npm cache
+      run: npm cache clean --force
+
     - name: 📦 Install dependencies
-      run: npm ci --verbose
+      run: npm ci --legacy-peer-deps --verbose
 
     - name: 🏗️ Build project
       run: npm run build --if-present
