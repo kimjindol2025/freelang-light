@@ -58,7 +58,7 @@ jobs:
       run: npm cache clean --force
 
     - name: 📦 Install dependencies
-      run: npm ci --legacy-peer-deps --verbose
+      run: npm ci --no-optional --legacy-peer-deps --verbose
 
     - name: 🔍 Run linter
       run: npm run lint --if-present
@@ -108,7 +108,7 @@ jobs:
       run: npm cache clean --force
 
     - name: 📦 Install dependencies
-      run: npm ci --legacy-peer-deps --verbose
+      run: npm ci --no-optional --legacy-peer-deps --verbose
 
     - name: 🏗️ Build project
       run: npm run build --if-present
