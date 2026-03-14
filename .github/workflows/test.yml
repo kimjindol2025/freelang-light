@@ -41,16 +41,21 @@ jobs:
 
     steps:
     - name: 📥 Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: 🔧 Set up Node.js ${{ env.NODE_VERSION }}
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
 
+    - name: 🛠️ Install build tools (for native modules)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential python3
+
     - name: 📦 Install dependencies
-      run: npm ci
+      run: npm ci --verbose
 
     - name: 🔍 Run linter
       run: npm run lint --if-present
@@ -69,7 +74,7 @@ jobs:
       continue-on-error: true
 
     - name: 📈 Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       if: always()
       with:
         files: ./coverage/coverage-final.json
@@ -83,16 +88,21 @@ jobs:
 
     steps:
     - name: 📥 Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: 🔧 Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
 
+    - name: 🛠️ Install build tools (for native modules)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential python3
+
     - name: 📦 Install dependencies
-      run: npm ci
+      run: npm ci --verbose
 
     - name: 🏗️ Build project
       run: npm run build --if-present
