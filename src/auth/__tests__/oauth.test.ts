@@ -55,6 +55,43 @@ describe('OAuth Handler', () => {
 
       done();
     });
+
+    it('should generate valid token pair with correct expiry times', () => {
+      const tokenPair = oauthHandler.generateTokenPair(mockUser);
+
+      expect(tokenPair).toBeDefined();
+      expect(tokenPair.accessToken).toBeDefined();
+      expect(tokenPair.refreshToken).toBeDefined();
+
+      // Verify access token
+      const accessPayload = require('jsonwebtoken').decode(tokenPair.accessToken);
+      expect(accessPayload.type).toBe('access');
+      expect(accessPayload.id).toBe(mockUser.id);
+
+      // Verify refresh token
+      const refreshPayload = require('jsonwebtoken').decode(tokenPair.refreshToken);
+      expect(refreshPayload.type).toBe('refresh');
+      expect(refreshPayload.id).toBe(mockUser.id);
+    });
+
+    it('should refresh access token from valid refresh token', () => {
+      const tokenPair = oauthHandler.generateTokenPair(mockUser);
+      const newAccessToken = oauthHandler.refreshAccessToken(tokenPair.refreshToken);
+
+      expect(newAccessToken).toBeDefined();
+      expect(typeof newAccessToken).toBe('string');
+
+      const payload = require('jsonwebtoken').decode(newAccessToken);
+      expect(payload.type).toBe('access');
+      expect(payload.id).toBe(mockUser.id);
+    });
+
+    it('should reject access token when used as refresh token', () => {
+      const tokenPair = oauthHandler.generateTokenPair(mockUser);
+      const result = oauthHandler.refreshAccessToken(tokenPair.accessToken);
+
+      expect(result).toBeNull();
+    });
   });
 
   describe('OAuth Config', () => {

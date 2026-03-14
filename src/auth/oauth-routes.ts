@@ -3,13 +3,28 @@
  */
 
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { oauthHandler } from './oauth-handler';
 import { loadOAuthConfig, validateOAuthConfig } from './oauth-config';
+import { validate, oauthCallbackSchema, tokenExchangeSchema } from '../middleware/validation';
 
 const router = Router();
 const config = loadOAuthConfig();
 
 validateOAuthConfig(config);
+
+// In-memory store for single-use auth codes (in production, use Redis/Database)
+const authCodeStore = new Map<string, { tokenPair: any; user: any; expiresAt: number }>();
+
+// Clean expired codes periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, data] of authCodeStore.entries()) {
+    if (data.expiresAt < now) {
+      authCodeStore.delete(code);
+    }
+  }
+}, 60000); // Every minute
 
 /**
  * Google OAuth Routes
@@ -25,7 +40,7 @@ router.get('/google', (req: Request, res: Response) => {
   res.redirect(authUrl);
 });
 
-router.get('/google/callback', async (req: Request, res: Response) => {
+router.get('/google/callback', validate(oauthCallbackSchema, 'query'), async (req: Request, res: Response) => {
   try {
     const { code } = req.query;
 
@@ -37,10 +52,18 @@ router.get('/google/callback', async (req: Request, res: Response) => {
       code as string,
       config.google.callbackURL
     );
-    const token = oauthHandler.generateToken(user);
+    const tokenPair = oauthHandler.generateTokenPair(user);
 
-    // Redirect to frontend with token
-    res.redirect(`https://253.dclub.kr?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
+    // Generate single-use auth code (60 second expiry)
+    const authCode = crypto.randomBytes(32).toString('hex');
+    authCodeStore.set(authCode, {
+      tokenPair,
+      user,
+      expiresAt: Date.now() + 60000,
+    });
+
+    // Redirect to frontend with auth code (not token!)
+    res.redirect(`https://253.dclub.kr/auth/callback?code=${authCode}`);
   } catch (error) {
     res.status(500).json({ error: 'Google OAuth failed' });
   }
@@ -59,7 +82,7 @@ router.get('/github', (req: Request, res: Response) => {
   res.redirect(authUrl);
 });
 
-router.get('/github/callback', async (req: Request, res: Response) => {
+router.get('/github/callback', validate(oauthCallbackSchema, 'query'), async (req: Request, res: Response) => {
   try {
     const { code } = req.query;
 
@@ -71,9 +94,17 @@ router.get('/github/callback', async (req: Request, res: Response) => {
       code as string,
       config.github.callbackURL
     );
-    const token = oauthHandler.generateToken(user);
+    const tokenPair = oauthHandler.generateTokenPair(user);
 
-    res.redirect(`https://253.dclub.kr?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
+    // Generate single-use auth code (60 second expiry)
+    const authCode = crypto.randomBytes(32).toString('hex');
+    authCodeStore.set(authCode, {
+      tokenPair,
+      user,
+      expiresAt: Date.now() + 60000,
+    });
+
+    res.redirect(`https://253.dclub.kr/auth/callback?code=${authCode}`);
   } catch (error) {
     res.status(500).json({ error: 'GitHub OAuth failed' });
   }
@@ -85,7 +116,7 @@ router.get('/github/callback', async (req: Request, res: Response) => {
 router.get('/naver', (req: Request, res: Response) => {
   const clientID = config.naver.clientID;
   const redirectUri = encodeURIComponent(config.naver.callbackURL);
-  const state = Math.random().toString(36).substring(7);
+  const state = crypto.randomBytes(16).toString('hex');
 
   req.session!.naverState = state;
 
@@ -94,7 +125,7 @@ router.get('/naver', (req: Request, res: Response) => {
   res.redirect(authUrl);
 });
 
-router.get('/naver/callback', async (req: Request, res: Response) => {
+router.get('/naver/callback', validate(oauthCallbackSchema, 'query'), async (req: Request, res: Response) => {
   try {
     const { code, state } = req.query;
 
@@ -110,9 +141,17 @@ router.get('/naver/callback', async (req: Request, res: Response) => {
       code as string,
       state as string
     );
-    const token = oauthHandler.generateToken(user);
+    const tokenPair = oauthHandler.generateTokenPair(user);
 
-    res.redirect(`https://253.dclub.kr?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
+    // Generate single-use auth code (60 second expiry)
+    const authCode = crypto.randomBytes(32).toString('hex');
+    authCodeStore.set(authCode, {
+      tokenPair,
+      user,
+      expiresAt: Date.now() + 60000,
+    });
+
+    res.redirect(`https://253.dclub.kr/auth/callback?code=${authCode}`);
   } catch (error) {
     res.status(500).json({ error: 'Naver OAuth failed' });
   }
@@ -146,8 +185,85 @@ router.post('/logout', (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Logout failed' });
     }
 
+    res.clearCookie('refreshToken');
     res.json({ message: 'Logged out successfully' });
   });
+});
+
+/**
+ * Token Exchange Endpoint
+ * Exchange single-use auth code for access + refresh tokens
+ * POST /auth/exchange?code=<auth-code>
+ */
+router.post('/exchange', validate(tokenExchangeSchema, 'query'), (req: Request, res: Response) => {
+  try {
+    const { code } = req.query;
+
+    if (!code) {
+      return res.status(400).json({ error: 'Missing authorization code' });
+    }
+
+    const codeData = authCodeStore.get(code as string);
+
+    if (!codeData) {
+      return res.status(401).json({ error: 'Invalid or expired authorization code' });
+    }
+
+    if (codeData.expiresAt < Date.now()) {
+      authCodeStore.delete(code as string);
+      return res.status(401).json({ error: 'Authorization code expired' });
+    }
+
+    // Remove the code (single-use)
+    authCodeStore.delete(code as string);
+
+    const { accessToken, refreshToken } = codeData.tokenPair;
+    const { user } = codeData;
+
+    // Set refresh token as HttpOnly cookie
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
+    res.json({
+      accessToken,
+      user,
+      expiresIn: 900, // 15 minutes in seconds
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Token exchange failed' });
+  }
+});
+
+/**
+ * Token Refresh Endpoint
+ * Use refresh token from cookie to get new access token
+ * POST /auth/refresh
+ */
+router.post('/refresh', (req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({ error: 'Missing refresh token' });
+    }
+
+    const newAccessToken = oauthHandler.refreshAccessToken(refreshToken);
+
+    if (!newAccessToken) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
+    }
+
+    res.json({
+      accessToken: newAccessToken,
+      expiresIn: 900, // 15 minutes in seconds
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Token refresh failed' });
+  }
 });
 
 export default router;

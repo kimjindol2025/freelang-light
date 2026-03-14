@@ -5,8 +5,15 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import session from 'express-session';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
+import fs from 'fs';
+import yaml from 'js-yaml';
+import swaggerUi from 'swagger-ui-express';
 import authRoutes from './auth/oauth-routes';
 import { oauthHandler } from './auth/oauth-handler';
+import { validate, createPostSchema } from './middleware/validation';
 
 const app: Express = express();
 const PORT = process.env.SERVER_PORT || 3001;
@@ -14,6 +21,9 @@ const PORT = process.env.SERVER_PORT || 3001;
 // ============================================================================
 // Middleware
 // ============================================================================
+
+// Security Headers
+app.use(helmet());
 
 // CORS
 app.use(
@@ -26,6 +36,24 @@ app.use(
 // Body Parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+// Rate Limiting
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 requests per windowMs
+  message: 'Too many authentication attempts, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // 100 requests per windowMs
+  message: 'Too many requests, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Session
 app.use(
@@ -67,6 +95,24 @@ export const authMiddleware = (
 };
 
 // ============================================================================
+// API Documentation
+// ============================================================================
+
+// Load and serve Swagger UI
+try {
+  const apiSpecPath = './docs/api.yaml';
+  if (fs.existsSync(apiSpecPath)) {
+    const apiSpec = yaml.load(fs.readFileSync(apiSpecPath, 'utf8')) as any;
+    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(apiSpec));
+    app.get('/api/docs.json', (req: Request, res: Response) => {
+      res.json(apiSpec);
+    });
+  }
+} catch (error) {
+  console.warn('⚠️  Failed to load API documentation:', error);
+}
+
+// ============================================================================
 // Routes
 // ============================================================================
 
@@ -79,12 +125,15 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
-// Auth Routes
-app.use('/auth', authRoutes);
+// Auth Routes (with rate limiting)
+app.use('/auth', authLimiter, authRoutes);
 
 // ============================================================================
 // Admin API Routes
 // ============================================================================
+
+// Apply rate limiting to all /api routes
+app.use('/api', apiLimiter);
 
 // Get Dashboard Stats
 app.get('/api/admin/stats', authMiddleware, (req: Request, res: Response) => {
@@ -127,15 +176,20 @@ app.delete(
 );
 
 // Create Post
-app.post('/api/admin/posts', authMiddleware, (req: Request, res: Response) => {
-  const { title, content } = req.body;
-  res.json({
-    id: Date.now(),
-    title,
-    content,
-    createdAt: new Date().toISOString(),
-  });
-});
+app.post(
+  '/api/admin/posts',
+  authMiddleware,
+  validate(createPostSchema, 'body'),
+  (req: Request, res: Response) => {
+    const { title, content } = req.body;
+    res.json({
+      id: Date.now(),
+      title,
+      content,
+      createdAt: new Date().toISOString(),
+    });
+  }
+);
 
 // ============================================================================
 // Error Handling

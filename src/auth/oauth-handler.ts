@@ -15,7 +15,19 @@ export interface OAuthUser {
 }
 
 export class OAuthHandler {
-  private jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
+  private jwtSecret: string;
+  private jwtRefreshSecret: string;
+
+  constructor() {
+    if (!process.env.JWT_SECRET) {
+      throw new Error('FATAL: JWT_SECRET environment variable is not set');
+    }
+    if (!process.env.JWT_REFRESH_SECRET) {
+      throw new Error('FATAL: JWT_REFRESH_SECRET environment variable is not set');
+    }
+    this.jwtSecret = process.env.JWT_SECRET;
+    this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
+  }
 
   /**
    * Google OAuth Callback
@@ -151,6 +163,77 @@ export class OAuthHandler {
       return null;
     }
   }
+
+  /**
+   * Generate Token Pair (Access + Refresh)
+   * Access token: 15 minutes
+   * Refresh token: 30 days
+   */
+  generateTokenPair(user: OAuthUser): { accessToken: string; refreshToken: string } {
+    const accessToken = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        provider: user.provider,
+        type: 'access',
+      },
+      this.jwtSecret,
+      { expiresIn: '15m' }
+    );
+
+    const refreshToken = jwt.sign(
+      {
+        id: user.id,
+        provider: user.provider,
+        type: 'refresh',
+      },
+      this.jwtRefreshSecret,
+      { expiresIn: '30d' }
+    );
+
+    return { accessToken, refreshToken };
+  }
+
+  /**
+   * Refresh Access Token from Refresh Token
+   * Returns new access token or null if invalid
+   */
+  refreshAccessToken(refreshToken: string): string | null {
+    try {
+      const payload = jwt.verify(refreshToken, this.jwtRefreshSecret) as any;
+
+      // Verify it's a refresh token, not an access token
+      if (payload.type !== 'refresh') {
+        return null;
+      }
+
+      // Generate new access token
+      const newAccessToken = jwt.sign(
+        {
+          id: payload.id,
+          email: payload.email,
+          provider: payload.provider,
+          type: 'access',
+        },
+        this.jwtSecret,
+        { expiresIn: '15m' }
+      );
+
+      return newAccessToken;
+    } catch (error) {
+      return null;
+    }
+  }
 }
 
-export const oauthHandler = new OAuthHandler();
+// Initialize OAuthHandler - will throw error if JWT_SECRET is not set
+let oauthHandler: OAuthHandler;
+try {
+  oauthHandler = new OAuthHandler();
+} catch (error) {
+  console.error((error as Error).message);
+  process.exit(1);
+}
+
+export { oauthHandler };
