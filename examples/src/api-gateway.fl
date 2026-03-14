@@ -197,7 +197,9 @@ fn match_route(path: string, method: string) -> string
   intent "경로와 메서드로 서비스 찾기"
   do
     // 간단한 패턴 매칭: /api/v1/posts -> posts_service
-    if string_contains(path, "/posts")
+    if string_contains(path, "/design")
+      return "design_compiler_service"
+    else if string_contains(path, "/posts")
       return "posts_service"
     else if string_contains(path, "/users")
       return "users_service"
