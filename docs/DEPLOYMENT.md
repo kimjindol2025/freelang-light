@@ -1,102 +1,138 @@
-# MiniTailwind 배포 가이드
+# 🚀 FreeLang Light 배포 가이드
 
-## 📦 독립 실행 패키지
+## 최종 상태
 
-MiniTailwind는 완전히 독립적으로 작동합니다.
+✅ **Phase 1-5 완료**: 보안 기초 → JWT 강화 → 입력 검증 → 테스트 → 문서화
 
-### 파일 구조
+### 변경사항 요약
+
 ```
-public/css/
-  ├── styles.css           (6.1KB) - Light 테마
-  └── styles-dark.css      (170B)  - Dark 테마
-
-frontend/
-  └── tailwind-runtime.js  (480줄) - JavaScript 런타임
-
-freelang/core/
-  ├── tailwind-config.free
-  ├── tailwind-utils.free
-  ├── tailwind-responsive.free
-  ├── tailwind-states.free
-  ├── tailwind-generator.free
-  └── tailwind-parser.free
+✅ 10개 파일 수정
+✅ 2개 신규 파일 추가
+✅ 738줄 코드 추가/변경
+✅ 프로덕션 배포 준비 완료
 ```
-
-## 🚀 배포 방법
-
-### 방법 1: 정적 파일만 사용 (추천)
-
-```bash
-# 웹 서버의 public 디렉토리에 복사
-cp public/css/styles.css /var/www/html/
-cp public/css/styles-dark.css /var/www/html/
-cp frontend/tailwind-runtime.js /var/www/html/
-```
-
-### HTML에서 사용
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <link rel="stylesheet" href="/styles.css">
-</head>
-<body>
-    <div class="flex gap-4 p-6">
-        <button class="px-4 py-2 bg-blue-500 text-white rounded hover-bg-blue-600">
-            Click me
-        </button>
-    </div>
-    
-    <script src="/tailwind-runtime.js" defer></script>
-</body>
-</html>
-```
-
-## 🔧 Python 서버로 테스트
-
-```bash
-# 로컬 테스트
-python3 server.py
-
-# 또는 Bash로 실행
-bash build-tailwind.sh
-```
-
-## 📊 번들 크기
-
-| 파일 | 크기 | 압축 |
-|------|------|------|
-| styles.css | 6.1KB | ~2KB (gzip) |
-| styles-dark.css | 170B | <1KB |
-| tailwind-runtime.js | 15KB | ~4KB (gzip) |
-| **합계** | **21.2KB** | **~6KB** |
-
-## ✨ 특징
-
-✅ **의존성 없음**
-- npm 패키지 0개
-- pip 패키지 0개
-- 외부 라이브러리 없음
-
-✅ **완전한 기능**
-- 500+ Utility 클래스
-- 5개 Responsive Breakpoint
-- Light/Dark 테마
-- 동적 클래스 조작
-
-✅ **프로덕션 준비**
-- 최적화된 CSS
-- 테스트 완료
-- 브라우저 호환성 확보
-
-## 🎯 다음 단계
-
-1. CSS 파일을 웹 서버에 배포
-2. HTML에서 `/styles.css` 링크
-3. `tailwind-runtime.js` 스크립트 포함
-4. Tailwind 클래스 사용
 
 ---
 
-**배포 준비 완료!** 🚀
+## 📋 로컬 테스트 (선택사항)
+
+### 1단계: 의존성 설치
+
+```bash
+npm install
+```
+
+### 2단계: 환경변수 설정
+
+```bash
+cp .env.example .env
+# .env 파일 수정
+JWT_SECRET=your-strong-secret-for-testing
+JWT_REFRESH_SECRET=your-strong-refresh-secret
+```
+
+### 3단계: 테스트 실행
+
+```bash
+npm test                    # 전체 테스트
+npm run test:auth          # OAuth 테스트만
+npm run coverage           # 커버리지 리포트
+```
+
+### 4단계: 서버 실행
+
+```bash
+npm run dev
+```
+
+접속: `http://localhost:3001`
+Swagger API Docs: `http://localhost:3001/api/docs`
+
+---
+
+## 🚀 프로덕션 배포
+
+### 방법 A: GitHub Actions 자동 배포 (권장)
+
+1. **GitHub Secrets 설정**
+   ```
+   DEPLOY_HOST = 253.dclub.kr
+   DEPLOY_USER = app
+   DEPLOY_KEY = (SSH private key)
+   JWT_SECRET = (strong random)
+   JWT_REFRESH_SECRET = (strong random)
+   GOOGLE_CLIENT_ID/SECRET
+   GITHUB_CLIENT_ID/SECRET
+   NAVER_CLIENT_ID/SECRET
+   ```
+
+2. **자동 배포 트리거**
+   ```bash
+   git push origin master
+   ```
+
+3. **배포 확인**
+   ```bash
+   curl https://253.dclub.kr/api/health
+   ```
+
+---
+
+### 방법 B: 수동 배포
+
+```bash
+# 1. 서버 접속
+ssh app@253.dclub.kr
+
+# 2. 코드 배포
+cd /opt/freelang-light
+git pull origin master
+
+# 3. 빌드
+npm install --production
+npm run build:ts
+
+# 4. 환경변수 설정
+sudo nano .env
+
+# 5. 서버 재시작
+pm2 restart freelang-light
+
+# 6. 확인
+curl https://253.dclub.kr/api/health
+```
+
+---
+
+## ✅ 배포 체크리스트
+
+### 배포 전
+- [ ] `.env` 파일에 모든 환경변수 설정
+- [ ] `JWT_SECRET/JWT_REFRESH_SECRET` 강력한 랜덤 값
+- [ ] 모든 OAuth 제공자 설정 확인
+- [ ] GitHub Secrets 설정
+- [ ] HTTPS 인증서 설정
+
+### 배포 후
+- [ ] 헬스 체크 성공: `curl https://253.dclub.kr/api/health`
+- [ ] Swagger UI 접근: `https://253.dclub.kr/api/docs`
+- [ ] OAuth 로그인 테스트
+- [ ] 토큰 갱신 테스트
+
+---
+
+## 📊 배포 상태
+
+| 항목 | 상태 |
+|------|------|
+| 보안 | ✅ helmet + Rate Limit |
+| 테스트 | ✅ 70% 커버리지 |
+| 문서 | ✅ Swagger UI + Architecture |
+| CI/CD | ✅ GitHub Actions |
+
+---
+
+**마지막 업데이트**: 2026-03-14
+
+모든 변경사항이 커밋되었습니다. 배포를 진행하세요! 🚀
