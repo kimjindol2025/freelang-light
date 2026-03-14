@@ -5,16 +5,16 @@
 import { oauthHandler, OAuthUser } from '../oauth-handler';
 import { loadOAuthConfig, validateOAuthConfig } from '../oauth-config';
 
-describe('OAuth Handler', () => {
-  // Mock user data
-  const mockUser: OAuthUser = {
-    id: '12345',
-    email: 'test@example.com',
-    name: 'Test User',
-    avatar: 'https://example.com/avatar.jpg',
-    provider: 'google',
-  };
+// Mock user data (available to all describe blocks)
+const mockUser: OAuthUser = {
+  id: '12345',
+  email: 'test@example.com',
+  name: 'Test User',
+  avatar: 'https://example.com/avatar.jpg',
+  provider: 'google',
+};
 
+describe('OAuth Handler', () => {
   describe('Token Generation & Verification', () => {
     it('should generate valid JWT token', () => {
       const token = oauthHandler.generateToken(mockUser);
