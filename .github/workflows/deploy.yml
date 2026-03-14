@@ -47,10 +47,12 @@ jobs:
           REMOTE="ssh -p ${{ secrets.DEPLOY_PORT }} ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
           $REMOTE "sleep 5 && curl -f https://253.dclub.kr/api/health || exit 1"
 
-      - name: Notify Slack
+      - name: Deployment notification
         if: always()
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          text: 'Deployment to 253 server: ${{ job.status }}'
-          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Deployment completed successfully"
+          else
+            echo "❌ Deployment failed"
+            exit 1
+          fi
